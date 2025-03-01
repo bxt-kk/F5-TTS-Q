@@ -2,6 +2,7 @@
 # Make adjustments inside functions, and consider both gradio and cli scripts if need to change func output format
 import os
 import sys
+import time as pytime
 from concurrent.futures import ThreadPoolExecutor
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # for MPS device compatibility
@@ -471,6 +472,7 @@ def infer_batch_process(
 
         # inference
         with torch.inference_mode():
+            clock = pytime.time()
             generated, _ = model_obj.sample(
                 cond=audio,
                 text=final_text_list,
@@ -479,10 +481,12 @@ def infer_batch_process(
                 cfg_strength=cfg_strength,
                 sway_sampling_coef=sway_sampling_coef,
             )
+            print('debug[sample delta]:', pytime.time() - clock)
 
             generated = generated.to(torch.float32)
             generated = generated[:, ref_audio_len:, :]
             generated_mel_spec = generated.permute(0, 2, 1)
+            clock = pytime.time()
             if mel_spec_type == "vocos":
                 generated_wave = vocoder.decode(generated_mel_spec)
             elif mel_spec_type == "bigvgan":
@@ -492,6 +496,7 @@ def infer_batch_process(
 
             # wav -> numpy
             generated_wave = generated_wave.squeeze().cpu().numpy()
+            print('debug[decode delta]:', pytime.time() - clock)
 
             if streaming:
                 for j in range(0, len(generated_wave), chunk_size):

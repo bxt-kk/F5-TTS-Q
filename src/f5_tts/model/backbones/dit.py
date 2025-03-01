@@ -8,6 +8,7 @@ d - dimension
 """
 
 from __future__ import annotations
+import time as pytime
 
 import torch
 from torch import nn
@@ -148,6 +149,8 @@ class DiT(nn.Module):
         drop_text,  # cfg for text
         mask: bool["b n"] | None = None,  # noqa: F722
     ):
+        dit_clock = pytime.time()
+
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
             time = time.repeat(batch)
@@ -162,11 +165,14 @@ class DiT(nn.Module):
         if self.long_skip_connection is not None:
             residual = x
 
+        dit_blocks_clock = pytime.time()
         for block in self.transformer_blocks:
             if self.checkpoint_activations:
                 x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
             else:
                 x = block(x, t, mask=mask, rope=rope)
+        x.cpu() # for debug
+        print(f'debug[dit blocks delta * {len(self.transformer_blocks)}]:', pytime.time() - dit_blocks_clock)
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))
@@ -174,4 +180,5 @@ class DiT(nn.Module):
         x = self.norm_out(x, t)
         output = self.proj_out(x)
 
+        print('debug[dit delta]:', pytime.time() - dit_clock)
         return output
