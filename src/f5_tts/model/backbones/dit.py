@@ -8,7 +8,6 @@ d - dimension
 """
 
 from __future__ import annotations
-import time as pytime
 
 import torch
 from torch import nn
@@ -131,6 +130,12 @@ class DiT(nn.Module):
 
         self.checkpoint_activations = checkpoint_activations
 
+        # <<< lab code.
+        self.dumpf_deque = []
+        self.trans_dists = torch.zeros(len(self.transformer_blocks))
+        self.nfe_step = 1
+        # >>>
+
     def ckpt_wrapper(self, module):
         # https://github.com/chuanyangjin/fast-DiT/blob/main/models.py
         def ckpt_forward(*inputs):
@@ -149,8 +154,6 @@ class DiT(nn.Module):
         drop_text,  # cfg for text
         mask: bool["b n"] | None = None,  # noqa: F722
     ):
-        dit_clock = pytime.time()
-
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
             time = time.repeat(batch)
@@ -165,14 +168,25 @@ class DiT(nn.Module):
         if self.long_skip_connection is not None:
             residual = x
 
-        dit_blocks_clock = pytime.time()
+        # <<< lab code.
+        if self.dumpf_deque:
+            dump_file = self.dumpf_deque.pop(0)
+            torch.save(dict(
+                x=x.to(torch.float16), t=t.to(torch.float16), mask=mask), dump_file)
+            print(dump_file)
+        tmp_dist = []
+        # >>>
         for block in self.transformer_blocks:
+            x_ = x # lab code.
             if self.checkpoint_activations:
                 x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
             else:
                 x = block(x, t, mask=mask, rope=rope)
-        x.cpu() # for debug
-        print(f'debug[dit blocks delta * {len(self.transformer_blocks)}]:', pytime.time() - dit_blocks_clock)
+            tmp_dist.append((1 - torch.cosine_similarity(x_, x, dim=-1).mean()) * 0.5) # lab code.
+        # <<< lab code.
+        for ix, dist in enumerate(tmp_dist):
+            self.trans_dists[ix] += dist.item() / len(tmp_dist) / self.nfe_step
+        # >>>
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))
@@ -180,5 +194,4 @@ class DiT(nn.Module):
         x = self.norm_out(x, t)
         output = self.proj_out(x)
 
-        print('debug[dit delta]:', pytime.time() - dit_clock)
         return output

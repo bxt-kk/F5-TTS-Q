@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from random import random
 from typing import Callable
-import time as pytime
 
 import torch
 import torch.nn.functional as F
@@ -162,7 +161,6 @@ class CFM(nn.Module):
             # step_cond = torch.where(cond_mask, cond, torch.zeros_like(cond))
 
             # predict flow
-            predict_flow_clock = pytime.time()
             pred = self.transformer(
                 x=x, cond=step_cond, text=text, time=t, mask=mask, drop_audio_cond=False, drop_text=False
             )
@@ -172,7 +170,6 @@ class CFM(nn.Module):
             null_pred = self.transformer(
                 x=x, cond=step_cond, text=text, time=t, mask=mask, drop_audio_cond=True, drop_text=True
             )
-            print('debug[predict flow delta]:', t, pytime.time() - predict_flow_clock)
             return pred + (pred - null_pred) * cfg_strength
 
         # noise input
@@ -197,9 +194,7 @@ class CFM(nn.Module):
         if sway_sampling_coef is not None:
             t = t + sway_sampling_coef * (torch.cos(torch.pi / 2 * t) - 1 + t)
 
-        odeint_clock = pytime.time()
         trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
-        print('debug[odeint delta]:', pytime.time() - odeint_clock)
 
         sampled = trajectory[-1]
         out = sampled
