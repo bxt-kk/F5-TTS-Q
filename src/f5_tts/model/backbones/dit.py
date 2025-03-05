@@ -8,6 +8,7 @@ d - dimension
 """
 
 from __future__ import annotations
+from collections import deque
 
 import torch
 from torch import nn
@@ -131,10 +132,13 @@ class DiT(nn.Module):
         self.checkpoint_activations = checkpoint_activations
 
         # <<< lab code.
-        self.dumpf_deque = []
-        self.trans_dists = torch.zeros(len(self.transformer_blocks))
-        self.nfe_step = 1
+        self.init_buffer_deque()
+        # self.trans_dists = torch.zeros(len(self.transformer_blocks))
+        # self.nfe_step = 1
         # >>>
+
+    def init_buffer_deque(self, maxlen:int=2000):
+        self.buffer_deque = deque(maxlen=maxlen)
 
     def ckpt_wrapper(self, module):
         # https://github.com/chuanyangjin/fast-DiT/blob/main/models.py
@@ -169,24 +173,22 @@ class DiT(nn.Module):
             residual = x
 
         # <<< lab code.
-        if self.dumpf_deque:
-            dump_file = self.dumpf_deque.pop(0)
-            torch.save(dict(
-                x=x.to(torch.float16), t=t.to(torch.float16), mask=mask), dump_file)
-            print(dump_file)
-        tmp_dist = []
+        if (self.buffer_deque.maxlen) > 0 and (mask is None):
+            self.buffer_deque.append(dict(
+                x=x.detach().cpu(), t=time.detach().cpu(), seq_len=seq_len))
+        # tmp_dist = []
         # >>>
         for block in self.transformer_blocks:
-            x_ = x # lab code.
+            # x_ = x # lab code.
             if self.checkpoint_activations:
                 x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
             else:
                 x = block(x, t, mask=mask, rope=rope)
-            tmp_dist.append((1 - torch.cosine_similarity(x_, x, dim=-1).mean()) * 0.5) # lab code.
-        # <<< lab code.
-        for ix, dist in enumerate(tmp_dist):
-            self.trans_dists[ix] += dist.item() / len(tmp_dist) / self.nfe_step
-        # >>>
+            # tmp_dist.append((1 - torch.cosine_similarity(x_, x, dim=-1).mean()) * 0.5) # lab code.
+        # # <<< lab code.
+        # for ix, dist in enumerate(tmp_dist):
+        #     self.trans_dists[ix] += dist.item() / len(tmp_dist) / self.nfe_step
+        # # >>>
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))
