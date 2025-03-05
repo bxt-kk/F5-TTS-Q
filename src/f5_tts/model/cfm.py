@@ -166,6 +166,7 @@ class CFM(nn.Module):
             pred = self.transformer(
                 x=x, cond=step_cond, text=text, time=t, mask=mask, drop_audio_cond=False, drop_text=False
             )
+            pred.cpu() # lab code.
             if cfg_strength < 1e-5:
                 return pred
 
