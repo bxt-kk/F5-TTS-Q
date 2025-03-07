@@ -136,9 +136,19 @@ class DiT(nn.Module):
         # self.trans_dists = torch.zeros(len(self.transformer_blocks))
         # self.nfe_step = 1
         # >>>
+        self.transformer_blocks_Q = None
+        self.time_embed_trans = None
+        self.rotary_embed_q = None
+        self.status_q = None
 
     def init_buffer_deque(self, maxlen:int=2000):
         self.buffer_deque = deque(maxlen=maxlen)
+
+    def set_q_params(self, blocks, time_trans, rotary_embed, status):
+        self.transformer_blocks_Q = blocks
+        self.time_embed_trans = time_trans
+        self.rotary_embed_q = rotary_embed
+        self.status_q = status
 
     def ckpt_wrapper(self, module):
         # https://github.com/chuanyangjin/fast-DiT/blob/main/models.py
@@ -178,13 +188,24 @@ class DiT(nn.Module):
                 x=x.detach().cpu(), t=time.detach().cpu(), seq_len=seq_len))
         # tmp_dist = []
         # >>>
-        for block in self.transformer_blocks:
-            # x_ = x # lab code.
-            if self.checkpoint_activations:
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
-            else:
-                x = block(x, t, mask=mask, rope=rope)
-            # tmp_dist.append((1 - torch.cosine_similarity(x_, x, dim=-1).mean()) * 0.5) # lab code.
+        if self.transformer_blocks_Q is None or (time.item() < 0.3):
+            # print('using DiT Blocks')
+            for block in self.transformer_blocks:
+                # x_ = x # lab code.
+                if self.checkpoint_activations:
+                    x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
+                else:
+                    x = block(x, t, mask=mask, rope=rope)
+                # tmp_dist.append((1 - torch.cosine_similarity(x_, x, dim=-1).mean()) * 0.5) # lab code.
+        else:
+            print('using DiT-Q Blocks')
+            rope_q = self.rotary_embed_q.forward_from_seq_len(seq_len)
+            t_q = t @ self.time_embed_trans
+            for bid, block in enumerate(self.transformer_blocks_Q):
+                if self.status_q[bid] == 1:
+                    x = block(x, t_q, rope=rope_q)
+                else:
+                    x = block(x, t, rope=rope)
         # # <<< lab code.
         # for ix, dist in enumerate(tmp_dist):
         #     self.trans_dists[ix] += dist.item() / len(tmp_dist) / self.nfe_step
