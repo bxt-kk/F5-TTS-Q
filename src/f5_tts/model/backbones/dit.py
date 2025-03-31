@@ -198,7 +198,7 @@ class DiT(nn.Module):
                     x = block(x, t, mask=mask, rope=rope)
                 # tmp_dist.append((1 - torch.cosine_similarity(x_, x, dim=-1).mean()) * 0.5) # lab code.
         else:
-            print('using DiT-Q Blocks')
+            # print('using DiT-Q Blocks')
             rope_q = self.rotary_embed_q.forward_from_seq_len(seq_len)
             t_q = t @ self.time_embed_trans
             for bid, block in enumerate(self.transformer_blocks_Q):
