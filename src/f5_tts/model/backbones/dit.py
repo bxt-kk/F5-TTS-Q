@@ -188,7 +188,7 @@ class DiT(nn.Module):
                 x=x.detach().cpu(), t=time.detach().cpu(), seq_len=seq_len))
         # tmp_dist = []
         # >>>
-        if self.transformer_blocks_Q is None or (time.item() < 0.3):
+        if self.transformer_blocks_Q is None:
             # print('using DiT Blocks')
             for block in self.transformer_blocks:
                 # x_ = x # lab code.
