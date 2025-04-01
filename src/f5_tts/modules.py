@@ -87,13 +87,19 @@ class LinearConvsBlock(nn.Module):
             rope=None,
         ) -> torch.Tensor:
         # x: b, n, d
+        if mask is not None:
+            mask = mask[..., None]
+            x = x.masked_fill(~mask, 0.0)
         x0 = x.transpose(1, 2) # b, d, n
         x = self.normal_active(self.conv_proj(x0))
         for linear_conv in self.linear_convs:
             x = x + linear_conv(x)
         x = self.normal_active(x)
         x = x0 + self.conv_ff_norm(x)
-        return x.transpose(1, 2)
+        x =  x.transpose(1, 2)
+        if mask is not None:
+            x = x.masked_fill(~mask, 0.0)
+        return x
 
 
 def quant_transformer_blocks(dit_blocks:nn.ModuleList, status:list[int]) -> tuple[nn.ModuleList, list[int]]:
